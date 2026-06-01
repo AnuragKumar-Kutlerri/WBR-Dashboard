@@ -15,6 +15,9 @@ const PERIODS = [
   { id: 'ninety', label: '90 Days' },
 ];
 
+// Non-location rows to drop from the 3rd Party reviews tables (both periods).
+const EXCLUDED_3PD = ['Trey', 'Rahul', 'Sahil', 'Didier', 'Olga'];
+
 const STAR_LOCS = [
   { value: 'all', label: 'All Locations' },
   { value: 'Ballpark', label: 'Ballpark' },
@@ -62,7 +65,8 @@ export default function Reviews({ data }) {
   const [period, setPeriod] = useState('weekly');
   const [starLoc, setStarLoc] = useState('all');
 
-  const rowsRaw = (data?.reviews?.[source]?.[period]) || [];
+  const rowsRaw = ((data?.reviews?.[source]?.[period]) || [])
+    .filter(r => source !== 'thirdparty' || !EXCLUDED_3PD.includes(String(r.loc).trim()));
   const periodLabel = period === 'weekly' ? '7 Days' : '90 Days';
 
   const total = useMemo(() => {
