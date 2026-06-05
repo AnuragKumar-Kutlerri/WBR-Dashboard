@@ -1,80 +1,68 @@
 import { NextResponse } from 'next/server';
-import { put, del } from '@vercel/blob';
+import { del } from '@vercel/blob';
+import { handleUpload } from '@vercel/blob/client';
 import { requireAdmin } from '@/lib/auth';
-import { parseWeekBuffers } from '@/lib/xlsxParser';
-import { weekKey, blobPath, parseWeekKey, ROLES } from '@/lib/week';
-import { labelFor, weeksInPeriod } from '@/lib/fiscalCalendar';
+import { blobPath, parseBlobPath, parseWeekKey, ROLES } from '@/lib/week';
+import { weeksInPeriod } from '@/lib/fiscalCalendar';
 
 export const runtime = 'nodejs';
 
-const MAX_BYTES = 10 * 1024 * 1024; // 10 MB per file
-const XLSX_CT = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+const MAX_BYTES = 20 * 1024 * 1024; // 20 MB per file (workbooks run ~4–11 MB)
+const ALLOWED_CT = [
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.ms-excel',
+  'application/octet-stream', // some browsers send this for .xlsx
+];
 
 function bad(message, status = 400) {
   return NextResponse.json({ error: message }, { status });
 }
 
-// POST: upsert any subset of { wbr, loyalty, catering } for one (period, week).
-// Re-uploading a role overwrites only that file; the others are left untouched.
+// POST: issue a client-upload token. The browser then uploads the file bytes
+// straight to Blob (bypassing Vercel's 4.5 MB function body limit). We only
+// authorize the request and constrain the target path/size/type here.
 export async function POST(request) {
-  if (!requireAdmin(request)) return bad('Admin access required', 403);
-
-  let form;
+  let body;
   try {
-    form = await request.formData();
+    body = await request.json();
   } catch {
-    return bad('Expected a multipart form upload');
+    return bad('Invalid request body');
   }
 
-  const period = parseInt(form.get('period'), 10);
-  const week = parseInt(form.get('week'), 10);
-  const max = weeksInPeriod(period);
-  if (!max) return bad('Please choose a valid period');
-  if (!(week >= 1 && week <= max)) return bad(`Week must be between 1 and ${max} for this period`);
+  try {
+    const jsonResponse = await handleUpload({
+      body,
+      request,
+      onBeforeGenerateToken: async (pathname) => {
+        // Auth: only the client-token request carries our Bearer header (the
+        // upload-completed callback comes from Vercel and skips this branch).
+        if (!requireAdmin(request)) throw new Error('Admin access required');
 
-  const key = weekKey(period, week);
-  const label = labelFor(period, week);
+        const parsed = parseBlobPath(pathname);
+        if (!parsed) throw new Error('Invalid upload path');
+        const pk = parseWeekKey(parsed.key);
+        const max = pk && weeksInPeriod(pk.period);
+        if (!max || pk.week < 1 || pk.week > max) throw new Error('Invalid period/week');
 
-  // Collect the provided files (any subset of the three roles).
-  const provided = [];
-  for (const role of ROLES) {
-    const file = form.get(role);
-    if (!file || typeof file.arrayBuffer !== 'function') continue;
-    if (!/\.xlsx?$/i.test(file.name || '')) return bad(`${role} must be an .xlsx or .xls spreadsheet`);
-    if (typeof file.size === 'number' && file.size > MAX_BYTES) return bad(`${role} file is too large (max 10 MB)`);
-    provided.push({ role, file });
+        return {
+          access: 'private',
+          allowedContentTypes: ALLOWED_CT,
+          maximumSizeInBytes: MAX_BYTES,
+          addRandomSuffix: false,
+          allowOverwrite: true, // re-uploading a role replaces just that file
+        };
+      },
+      onUploadCompleted: async () => {
+        // No-op. (Only fires in production; can't reach localhost.) The data
+        // route validates parsing on read and surfaces any bad file there.
+      },
+    });
+    return NextResponse.json(jsonResponse);
+  } catch (err) {
+    const msg = err?.message || 'Upload authorization failed';
+    const status = /admin access/i.test(msg) ? 403 : 400;
+    return bad(msg, status);
   }
-  if (provided.length === 0) return bad('Please choose at least one spreadsheet to upload');
-
-  // Validate each file actually parses before storing — never let a broken
-  // workbook reach users. Each role is parsed in its own buffer slot.
-  for (const { role, file } of provided) {
-    const buffer = Buffer.from(await file.arrayBuffer());
-    try {
-      parseWeekBuffers({ [role]: buffer }, label);
-    } catch {
-      return bad(`Could not read the ${role} spreadsheet — please check the file and try again`);
-    }
-    file._buffer = buffer; // reuse below to avoid re-reading
-  }
-
-  const written = [];
-  for (const { role, file } of provided) {
-    try {
-      await put(blobPath(key, role), file._buffer, {
-        access: 'private',
-        addRandomSuffix: false,
-        allowOverwrite: true,
-        contentType: XLSX_CT,
-      });
-      written.push(role);
-    } catch (err) {
-      console.error('Blob upload failed:', err.message);
-      return bad('Upload failed while saving the file', 500);
-    }
-  }
-
-  return NextResponse.json({ key, label, written });
 }
 
 // DELETE: ?week=P6-W1 removes the whole week; add &file=catering to remove just
@@ -88,10 +76,9 @@ export async function DELETE(request) {
   const file = url.searchParams.get('file') || '';
 
   if (!parseWeekKey(key)) return bad('Only uploaded weeks can be deleted');
-
-  const roles = file ? [file] : ROLES;
   if (file && !ROLES.includes(file)) return bad('Invalid file role');
 
+  const roles = file ? [file] : ROLES;
   try {
     for (const role of roles) {
       await del(blobPath(key, role)).catch(() => {}); // ignore missing roles

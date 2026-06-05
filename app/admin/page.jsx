@@ -61,7 +61,8 @@ export default function AdminPage() {
     }
     setBusy(true);
     try {
-      const { label, written } = await uploadWeek(files, period, week);
+      const { written } = await uploadWeek(files, period, week);
+      const label = labelFor(period, week);
       setSuccess(`Saved ${written.join(', ')} for ${label}. Users see it on next refresh.`);
       setFiles({ wbr: null, loyalty: null, catering: null });
       e.target.reset();
