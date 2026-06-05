@@ -44,8 +44,9 @@ export async function POST(request) {
         const max = pk && weeksInPeriod(pk.period);
         if (!max || pk.week < 1 || pk.week > max) throw new Error('Invalid period/week');
 
+        // Note: `access` is NOT set here — it's passed on the client upload()
+        // call. Returning it would make the token options invalid (400).
         return {
-          access: 'private',
           allowedContentTypes: ALLOWED_CT,
           maximumSizeInBytes: MAX_BYTES,
           addRandomSuffix: false,
@@ -59,6 +60,7 @@ export async function POST(request) {
     });
     return NextResponse.json(jsonResponse);
   } catch (err) {
+    console.error('[api/admin/upload] token error:', err?.message, err);
     const msg = err?.message || 'Upload authorization failed';
     const status = /admin access/i.test(msg) ? 403 : 400;
     return bad(msg, status);
