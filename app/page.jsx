@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { fetchSheets, fetchWeekData } from '@/lib/api';
+import Link from 'next/link';
+import { fetchSheets, fetchWeekData, isAdmin } from '@/lib/api';
 import Snapshot from '@/components/Snapshot';
 import Sales from '@/components/Sales';
 import Costs from '@/components/Costs';
@@ -28,6 +29,7 @@ const TABS = [
 export default function DashboardPage() {
   const router = useRouter();
   const [authChecked, setAuthChecked] = useState(false);
+  const [admin, setAdmin] = useState(false);
   const [sheets, setSheets] = useState([]);
   const [week, setWeek] = useState('');
   const [data, setData] = useState(null);
@@ -41,6 +43,7 @@ export default function DashboardPage() {
     if (!localStorage.getItem('wbr_token')) {
       router.replace('/login');
     } else {
+      setAdmin(isAdmin());
       setAuthChecked(true);
     }
   }, [router]);
@@ -147,6 +150,7 @@ export default function DashboardPage() {
         </div>
         <div className="brand-right">
           <img src="/kutlerri-logo.png" alt="Kutlerri" className="brand-logo brand-logo-kutlerri" />
+          {admin && <Link href="/admin" className="logout-btn" style={{ textDecoration: 'none' }}>Admin</Link>}
           <button className="logout-btn" onClick={handleLogout}>Sign out</button>
         </div>
       </header>

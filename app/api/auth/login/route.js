@@ -20,16 +20,17 @@ export async function POST(request) {
 
   const users = getUsers();
   const normalized = String(email).toLowerCase().trim();
-  const hash = users[normalized];
-  if (!hash) {
+  const user = users[normalized];
+  if (!user || !user.hash) {
     return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 });
   }
 
-  const valid = await bcrypt.compare(password, hash);
+  const valid = await bcrypt.compare(password, user.hash);
   if (!valid) {
     return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 });
   }
 
-  const token = jwt.sign({ email: normalized }, process.env.JWT_SECRET, { expiresIn: '8h' });
-  return NextResponse.json({ token, user: { email: normalized } });
+  const role = user.role || 'user';
+  const token = jwt.sign({ email: normalized, role }, process.env.JWT_SECRET, { expiresIn: '8h' });
+  return NextResponse.json({ token, user: { email: normalized, role } });
 }

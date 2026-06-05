@@ -7,3 +7,4 @@ out/
 claude.md
 .env.example
 .playwright-mcp/
+docs/

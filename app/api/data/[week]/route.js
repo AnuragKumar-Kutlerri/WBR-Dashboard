@@ -1,8 +1,11 @@
 import { NextResponse } from 'next/server';
 import path from 'path';
 import fs from 'fs';
-import { parseWeekFolder } from '@/lib/xlsxParser';
+import { parseWeekFolder, parseWeekBuffers } from '@/lib/xlsxParser';
 import { verifyAuth } from '@/lib/auth';
+import { parseWeekKey } from '@/lib/week';
+import { labelFor } from '@/lib/fiscalCalendar';
+import { loadBlobWeek } from '@/lib/sheetsSource';
 
 export const runtime = 'nodejs';
 
@@ -28,20 +31,31 @@ export async function GET(request, { params }) {
     if (!week || /[\\/]/.test(week) || week.includes('..')) {
       return NextResponse.json({ error: 'Invalid week name' }, { status: 400 });
     }
+
     const folder = path.join(DATA_DIR, week);
-    if (!fs.existsSync(folder)) {
+    if (fs.existsSync(folder)) {
+      // Committed data/ week — keyed by file mtimes.
+      const cacheKey = `${week}:${folderFingerprint(folder)}`;
+      if (cache.has(cacheKey)) return NextResponse.json(cache.get(cacheKey));
+      const data = parseWeekFolder(folder);
+      cache.set(cacheKey, data);
+      return NextResponse.json(data);
+    }
+
+    // Not a committed folder → an admin-uploaded week stored in Blob.
+    const pk = parseWeekKey(week);
+    if (!pk) {
       return NextResponse.json({ error: 'Week not found: ' + week }, { status: 404 });
     }
-    const fp = folderFingerprint(folder);
-    const cacheKey = `${week}:${fp}`;
-    if (cache.has(cacheKey)) {
-      return NextResponse.json(cache.get(cacheKey));
-    }
-    const data = parseWeekFolder(folder);
+    const { buffers, fingerprint } = await loadBlobWeek(week);
+    const cacheKey = `${week}:${fingerprint}`; // upload time busts the cache
+    if (cache.has(cacheKey)) return NextResponse.json(cache.get(cacheKey));
+    const data = parseWeekBuffers(buffers, labelFor(pk.period, pk.week));
     cache.set(cacheKey, data);
     return NextResponse.json(data);
   } catch (err) {
     console.error('[api/data/[week]]', err);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    const status = err.code === 'BLOB_NOT_FOUND' ? 404 : 500;
+    return NextResponse.json({ error: err.message }, { status });
   }
 }
