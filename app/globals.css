@@ -290,7 +290,7 @@ table {
   font-size: 13px;
 }
 thead th {
-  text-align: left;
+  text-align: center;
   padding: 9px 12px;
   border-bottom: 2px solid var(--border);
   color: var(--muted);
@@ -302,8 +302,13 @@ thead th {
   background: var(--bg3);
   font-family: var(--font);
 }
+/* First column always left-aligned; every other column centered. */
+thead th:first-child,
+tbody td:first-child {
+  text-align: left;
+}
 thead th.right {
-  text-align: right;
+  text-align: center;
 }
 /* 3PD operations tables have many narrow columns; let their headers wrap to
    ~2 lines instead of forcing one very wide nowrap row. */
@@ -333,9 +338,10 @@ tbody td {
   padding: 10px 12px;
   border-bottom: 1px solid var(--border);
   color: var(--text);
+  text-align: center;
 }
 tbody td.right {
-  text-align: right;
+  text-align: center;
   font-family: var(--mono);
   font-size: 12px;
 }

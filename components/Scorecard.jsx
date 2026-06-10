@@ -3,6 +3,29 @@
 import { useState, useEffect } from 'react';
 import { fetchScorecardIndex, fetchScorecard } from '@/lib/api';
 
+const hexRGB = h => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+
+// The fixed 5-band color scale (best → worst) used across the whole scorecard,
+// so every cell is colored from one consistent palette.
+const PALETTE = ['#33A854', '#B6D7A8', '#FFE599', '#EA9999', '#FF5C5F'];
+const PALETTE_BY_CLASS = { green: '#33A854', amber: '#FFE599', red: '#FF5C5F' };
+
+// Snap an arbitrary fill to the nearest color in the palette.
+function nearestHex(hex) {
+  if (!/^#[0-9a-f]{6}$/i.test(hex)) return null;
+  const [r, g, b] = hexRGB(hex);
+  let best = PALETTE[0], bd = Infinity;
+  for (const p of PALETTE) {
+    const [pr, pg, pb] = hexRGB(p);
+    const d = (r - pr) ** 2 + (g - pg) ** 2 + (b - pb) ** 2;
+    if (d < bd) { bd = d; best = p; }
+  }
+  return best;
+}
+
+// Pill style: the palette color as the background with dark text (like the swatches).
+const pill = hex => ({ background: hex, color: '#1a1f2e' });
+
 const GRANS = [
   { id: 'weekly',  label: 'Weekly' },
   { id: 'period',  label: 'Period' },
@@ -16,27 +39,6 @@ function fmtCell(c) {
   if (c.w != null && c.w !== '') return c.w;
   if (c.v == null || c.v === '') return '-';
   return String(c.v);
-}
-
-// The dashboard's standard 3-tone palette (same soft colors as the .badge cells
-// on the other tabs).
-// Soft badge palette (same colors as the .badge cells on the other tabs), used
-// for the composite-score / contributor-band cells the sheet colors via rules.
-const BADGE_STYLE = {
-  green: { background: '#dcfce7', color: '#15803d' },
-  amber: { background: '#fef3c7', color: '#b45309' },
-  red:   { background: '#fee2e2', color: '#b91c1c' },
-};
-
-// A pill style for a sheet fill: light tint background + darker same-hue text,
-// keeping the sheet's exact color while matching the badge look elsewhere.
-function pillFromHex(hex) {
-  if (!hex || !/^#[0-9a-f]{6}$/i.test(hex)) return null;
-  const ch = i => parseInt(hex.slice(i, i + 2), 16);
-  const r = ch(1), g = ch(3), b = ch(5);
-  const light = x => Math.round(x + (255 - x) * 0.82);
-  const dark = x => Math.round(x * 0.5);
-  return { background: `rgb(${light(r)}, ${light(g)}, ${light(b)})`, color: `rgb(${dark(r)}, ${dark(g)}, ${dark(b)})` };
 }
 
 // Composite Score and Contributor Band are colored by Excel conditional
@@ -54,15 +56,16 @@ function deriveClass(header, v) {
   return null;
 }
 
-// The badge style for a cell, or null when it has no color (plain text cell).
+// The pill style for a cell, or null when it has no color (plain text cell).
+// Sheet fills snap to the fixed palette; composite/band cells (no fill) map
+// their derived tone to a palette color.
 function cellPill(header, c) {
-  if (c.bg) return pillFromHex(c.bg);
+  if (c.bg) { const hex = nearestHex(c.bg); return hex ? pill(hex) : null; }
   const cls = deriveClass(header, c.v);
-  return cls ? BADGE_STYLE[cls] : null;
+  return cls ? pill(PALETTE_BY_CLASS[cls]) : null;
 }
 
-// Reproduces the source workbook's color coding (softened), filling in the
-// composite-score / contributor-band colors the sheet applies via rules.
+// Colors every cell from one fixed 5-band palette for a consistent look.
 function ColorTable({ title, data }) {
   if (!data || !data.headers || !data.headers.length) return null;
   return (
@@ -76,10 +79,10 @@ function ColorTable({ title, data }) {
           {data.rows.map((row, ri) => (
             <tr key={ri}>
               {row.map((c, ci) => {
-                const pill = cellPill(data.headers[ci], c);
+                const style = cellPill(data.headers[ci], c);
                 return (
                   <td key={ci} className={ci === 0 ? '' : 'right'}>
-                    {pill ? <span className="sc-badge" style={pill}>{fmtCell(c)}</span> : fmtCell(c)}
+                    {style ? <span className="sc-badge" style={style}>{fmtCell(c)}</span> : fmtCell(c)}
                   </td>
                 );
               })}

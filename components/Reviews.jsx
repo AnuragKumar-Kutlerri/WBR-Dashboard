@@ -235,14 +235,7 @@ export default function Reviews({ data }) {
         )}
       </div>
 
-      {period === 'day30' ? (
-        <>
-          <ReviewTable rows={data?.reviews?.instore?.day30} kind="instore" periodLabel="30 Days" />
-          <ReviewTable rows={data?.reviews?.thirdparty?.day30} kind="thirdparty" periodLabel="30 Days" />
-        </>
-      ) : (
-        <ReviewTable rows={rowsRaw} kind={source} periodLabel={periodLabel} />
-      )}
+      <ReviewTable rows={rowsRaw} kind={source} periodLabel={periodLabel} />
 
       <div className="charts-row">
         <div className="chart-card">
