@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Table from './Table';
 import { fmt$, fmtN, fmtPct, fmtVar } from '@/lib/fmt';
-
+  
 const SUB = [
   { id: 'catering', label: 'Catering Marketing' },
   { id: 'loyalty',  label: 'Loyalty Marketing' },
