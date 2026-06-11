@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { getUsers } from '@/lib/auth';
-
+ 
 export const runtime = 'nodejs';
 
 export async function POST(request) {
